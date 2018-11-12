@@ -84,6 +84,13 @@
     
     // 一次性请求所有item的数据
     [self getAllData];
+    
+    self.swipeTableView.swipeHeaderView = nil;
+    [self.swipeTableView reloadData];
+    self.tableViewHeader.st_y = 100;
+
+    [self.view addSubview:self.tableViewHeader];
+    self.swipeTableView.st_y = self.tableViewHeader.st_bottom;
 }
 
 - (UIScreenEdgePanGestureRecognizer *)screenEdgePanGestureRecognizer {
@@ -250,6 +257,7 @@
     if (nil == _tableView) {
         _tableView = [[CustomTableView alloc]initWithFrame:_swipeTableView.bounds style:UITableViewStylePlain];
         _tableView.backgroundColor = RGBColor(255, 255, 225);
+        [_tableView addObserver:self forKeyPath:@"contentOffset" options:NSKeyValueObservingOptionNew|NSKeyValueObservingOptionOld context:nil];
     }
     return _tableView;
 }
@@ -455,4 +463,73 @@
     // Dispose of any resources that can be recreated.
 }
 
+-(void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context{
+    if ([keyPath isEqualToString:@"contentOffset"]) {
+        NSValue *newOffset = change[NSKeyValueChangeNewKey];
+        CGPoint offset = newOffset.CGPointValue;
+        NSValue *oldOffsetv = change[NSKeyValueChangeOldKey];
+        CGPoint oldOffset = oldOffsetv.CGPointValue;
+        
+        if (!self.swipeTableView.currentItemView) {
+            return;
+        }
+        if (fabs(offset.y - oldOffset.y) < 0.001) {
+            return;
+        }
+        
+        //由于动态更新头部 导致偏移变化
+        //有头部默认的偏移
+        CGFloat defaultHaveHeaderOffsetY = -(self.swipeTableView.swipeHeaderBar.st_height + self.swipeTableView.swipeHeaderView.st_height);
+        //没有头部默认的偏移
+        CGFloat defaultNoHeaderOffsetY = -self.swipeTableView.swipeHeaderBar.st_height;
+        if ((fabs(offset.y - defaultHaveHeaderOffsetY) < 1 && fabs(oldOffset.y - defaultNoHeaderOffsetY) < 1) ||
+            (fabs(offset.y - defaultNoHeaderOffsetY) < 1 && fabs(oldOffset.y - defaultHaveHeaderOffsetY) < 1)) {
+            return;
+        }
+        
+        BOOL scrollUp = NO;
+        if (offset.y > oldOffset.y) {
+            scrollUp = YES;
+        }
+        NSLog(@"contentoffset --%@, %@ scroll %@", newOffset, oldOffsetv, scrollUp ? @"up" : @"down");
+        
+        CGFloat defaultOffsetY = 0;
+        if (self.swipeTableView.swipeHeaderBar) {
+            defaultOffsetY = -self.swipeTableView.swipeHeaderBar.st_height;
+        }
+        
+        if (!self.swipeTableView.swipeHeaderView) {
+            //往上 需要把头部加上
+//            if (scrollUp && offset.y > defaultOffsetY) {
+            if (offset.y > defaultOffsetY) {
+                if (self.tableViewHeader.superview) {
+                    [self.tableViewHeader removeFromSuperview];
+                }
+                //加上头部后的坐标
+                self.swipeTableView.st_y = 100;
+                
+                self.swipeTableView.swipeHeaderView = self.tableViewHeader;
+//                [self.swipeTableView reloadData];
+            }
+        }
+        else{
+            defaultOffsetY = -(self.swipeTableView.swipeHeaderBar.st_height + self.swipeTableView.swipeHeaderView.st_height + 0.1);
+            //往下 需要把头部分开
+//            if (!scrollUp && offset.y < defaultOffsetY) {
+            if (offset.y < defaultOffsetY) {
+                self.swipeTableView.swipeHeaderView = nil;
+//                [self.swipeTableView reloadData];
+                
+                self.tableViewHeader.st_y = 100;
+                
+                [self.view addSubview:self.tableViewHeader];
+                self.swipeTableView.st_y = self.tableViewHeader.st_bottom;
+            }
+        }
+    }
+}
+
+-(void)dealloc{
+    [self.tableView removeObserver:self forKeyPath:@"contentOffset"];
+}
 @end
